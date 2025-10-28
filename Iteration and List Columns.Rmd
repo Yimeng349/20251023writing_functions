@@ -1,0 +1,311 @@
+---
+title: "Untitled"
+output: html_document
+date: "2025-10-28"
+---
+```{r}
+library(tidyverse)
+library(rvest)
+library(p8105.datasets)
+data("weather_df")
+set.seed(1)
+```
+
+## lists
+```{r}
+vec_numeric = 5:8
+vec_char = c("My", "name", "is", "Jeff")
+vec_logical = c(TRUE, TRUE, TRUE, FALSE)
+```
+
+```{r}
+1 = list(
+  vec_numeric = 5:8,
+  mat = matrix(1:8, 2, 4),
+  vec_logical = c(TRUE, FALSE),
+  summary = summary(rnorm(1000)))
+1
+```
+
+```{r}
+1$vec_numeric
+```
+
+```{r}
+1[[1]]
+```
+
+```{r}
+1[[1]][1:3]
+```
+
+## for loops
+```{r}
+list_norms = 
+  list(
+    a = rnorm(20, 3, 1),
+    b = rnorm(20, 0, 5),
+    c = rnorm(20, 10, .2),
+    d = rnorm(20, -3, 1)
+  )
+```
+
+```{r}
+mean_and_sd = function(x) {
+  
+  if (!is.numeric(x)) {
+    stop("Argument x should be numeric")
+  } else if (length(x) == 1) {
+    stop("Cannot be computed for length 1 vectors")
+  }
+  
+  mean_x = mean(x)
+  sd_x = sd(x)
+
+  tibble(
+    mean = mean_x, 
+    sd = sd_x
+  )
+}
+```
+
+```{r}
+mean_and_sd(list_norms[[1]])
+```
+
+```{r}
+output = vector("list", length = 4)
+
+for (i in 1:4) {
+  output[[i]] = mean_and_sd(list_norms[[i]])
+}
+output
+```
+
+## map
+```{r}
+output = map(list_norms, mean_and_sd)
+output
+```
+
+```{r}
+output = vector("list", length = 4)
+
+for (i in 1:4) {
+  output[[i]] = median(list_norms[[i]])
+}
+
+output = map(list_norms, median)
+output
+```
+
+## map variants
+```{r}
+output = map_dbl(list_norms, median, .id = "input")
+output
+```
+
+```{r}
+output = map_dfr(list_norms, mean_and_sd, .id = "input")
+output
+```
+
+```{r}
+output = map2(input_1, input_2, \(x,y) func(arg_1 = x, arg_2 = y))
+```
+
+## List columns and operations
+```{r}
+listcol_df = 
+  tibble(
+    name = c("a", "b", "c", "d"),
+    samp = list_norms
+  )
+listcol_df
+```
+
+```{r}
+listcol_df |> pull(name)
+```
+
+```{r}
+listcol_df |> pull(samp)
+```
+
+```{r}
+pull(listcol_df, samp)[[1]]
+```
+
+```{r}
+mean_and_sd(pull(listcol_df, samp)[[1]])
+```
+
+```{r}
+map(pull(listcol_df, samp), mean_and_sd)
+```
+
+```{r}
+listcol_df = 
+  listcol_df |> 
+  mutate(summary = map(samp, mean_and_sd))
+listcol_df
+```
+
+```{r}
+pull(listcol_df,summary)
+```
+
+```{r}
+listcol_df |>
+  select(-samp) |>
+  unnest(summary)
+```
+
+## revisiting NSDUH
+```{r}
+nsduh_table <- function(html, table_num) {
+  
+  table = 
+    html |> 
+    html_table() |> 
+    nth(table_num) |>
+    slice(-1) |> 
+    select(-contains("P Value")) |>
+    pivot_longer(
+      -State,
+      names_to = "age_year", 
+      values_to = "percent") |>
+    separate(age_year, into = c("age", "year"), sep = "\\(") |>
+    mutate(
+      year = str_replace(year, "\\)", ""),
+      percent = str_replace(percent, "[a-c]$", ""),
+      percent = as.numeric(percent)) |>
+    filter(!(State %in% c("Total U.S.", "Northeast", "Midwest", "South", "West")))
+  
+  table
+}
+nsduh_table
+```
+
+```{r}
+nsduh_url = "http://samhda.s3-us-gov-west-1.amazonaws.com/s3fs-public/field-uploads/2k15StateFiles/NSDUHsaeShortTermCHG2015.htm"
+
+nsduh_html = read_html(nsduh_url)
+
+output = vector("list", 3)
+
+for (i in c(1, 4, 5)) {
+  output[[i]] = nsduh_table(nsduh_html, i)
+}
+
+nsduh_results = bind_rows(output)
+nsduh_results
+```
+
+```{r}
+nsduh_results = 
+  map(c(1, 4, 5), nsduh_table, html = nsduh_html) |> 
+  bind_rows()
+nsduh_results
+```
+
+```{r}
+nsduh_results= 
+  tibble(
+    name = c("marj", "cocaine", "heroine"),
+    number = c(1, 4, 5)) |> 
+  mutate(table = map(number, nsduh_table, html = nsduh_html)) |> 
+  unnest(cols = "table")
+nsduh_results
+```
+
+```{r}
+nsduh_results= 
+  tibble(
+    name = c("marj", "cocaine", "heroine"),
+    number = c(1, 4, 5)) |> 
+  mutate(table = map(number, \(num) nsduh_table(html = nsduh_html, num))) |> 
+  unnest(cols = "table")
+nsduh_results
+```
+
+## operations on nested data
+```{r}
+weather_nest = 
+  nest(weather_df, data = date:tmin)
+weather_nest
+```
+
+```{r}
+weather_nest |> pull(name)
+```
+
+```{r}
+weather_nest |> pull(data)
+```
+
+```{r}
+unnest(weather_nest,cols = data)
+weather_nest
+```
+
+```{r}
+weather_lm = function(df) {
+  lm(tmax ~ tmin, data = df)
+}
+```
+
+```{r}
+weather_lm(pull(weather_nest,data)[[1]])
+```
+
+```{r}
+map(pull(weather_nest,data),weather_lm)
+```
+
+```{r}
+map(pull(weather_nest,data), \(df)lm(tmax ~ tmin,data = df))
+```
+
+```{r}
+weather_nest = 
+  weather_nest |> 
+  mutate(models = map(data, weather_lm))
+weather_nest
+```
+
+## using iteration for data import
+```{r}
+full_df = 
+  tibble(
+    files = list.files("data/exp_data/"),
+    path = str_c("data/exp_data/", files)
+  ) %>% 
+  mutate(data = map(path, read_csv)) %>% 
+  unnest()
+full_df
+```
+
+```{r}
+tidy_df = 
+  full_df %>% 
+  mutate(
+    files = str_replace(files, ".csv", ""),
+    group = str_sub(files, 1, 3)) %>% 
+  pivot_longer(
+    week_1:week_8,
+    names_to = "week",
+    values_to = "outcome",
+    names_prefix = "week_") %>% 
+  mutate(week = as.numeric(week)) %>% 
+  select(group, subj = files, week, outcome)
+tidy_df
+```
+
+```{r}
+tidy_df %>% 
+  ggplot(aes(x = week, y = outcome, group = subj, color = group)) + 
+  geom_point() + 
+  geom_path() + 
+  facet_grid(~group)
+```
